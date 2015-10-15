@@ -23,7 +23,7 @@ sub import {
         *CORE::GLOBAL::readlink = $pkg->can('readlink');
 
         no strict 'refs';
-        *{'CORE::-X'} = $pkg->can('filetest');
+        *{'CORE::GLOBAL::-X'} = $pkg->can('filetest');
         $pkg->export_to_level( 0, qw(is_l) );
 #        *is_l = *is_l_win32;
 

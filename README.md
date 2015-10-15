@@ -21,11 +21,11 @@ The ability to create symlinks and hardlinks is protected under Windows and you 
 To Do
 =====
 
-1 Report to Audrey Tang about issues with Win32::Symlink and Win32::Hardlink
-1 See if -l test can be made seamless and how far back we can go in perl versions
-1 Add some import options :STD :VLN (very long names 32767 chars) and importing 'is_l mk_VLN rm_VLN' subs on demand with rename option.
-1 Ensure is a no-op on linux systems (except is_l which will still need to be available -- alas code will still need to be refactored for this to work on both platforms).
-1 Create my PAUSE account
-1 Work out how to build for CPAN especially getting XS from Inline::C
-1 Upload to CPAN
-1 I have a crude pure perl version to add to CPAN as well: it uses \`mklink\` and \`DIR\`
+1. Report to Audrey Tang about issues with Win32::Symlink and Win32::Hardlink
+1. See if -l test can be made seamless and how far back we can go in perl versions
+1. Add some import options :STD :VLN (very long names 32767 chars) and importing 'is_l mk_VLN rm_VLN' subs on demand with rename option.
+1. Ensure is a no-op on linux systems (except is_l which will still need to be available -- alas code will still need to be refactored for this to work on both platforms).
+1. Create my PAUSE account
+1. Work out how to build for CPAN especially getting XS from Inline::C
+1. Upload to CPAN
+1. I have a crude pure perl version to add to CPAN as well: it uses \`mklink\` and \`DIR\`
