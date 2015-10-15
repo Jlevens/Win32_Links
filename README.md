@@ -14,13 +14,15 @@ I understand that deep magic involving changing the code generated may allow thi
 
 Note that I had to 'cpanm --force Inline::C' on Windows 7 Ultimate and strawberry perl 5.22.0. The install errors appear to be related to the install *process* the actual module is working.
 
-The existing CPAN modules Win32::Symlink and Win32::Hardlink both began life circa 2004 years before Microsoft added the POSIX compliant symlinks used by this code. My tests of Win32::Symlink confirmed that it cannot be used as a seamless replacement. Win32::Hardlink I could even force install.
+The existing CPAN modules Win32::Symlink and Win32::Hardlink both began life circa 2004 years before Microsoft added the POSIX compliant symlinks used by this code. My tests of Win32::Symlink confirmed that it cannot be used as a seamless replacement. Win32::Hardlink I could not even force install.
 
 The ability to create symlinks and hardlinks is protected under Windows and you will need to add the users groups you need via Group Policy to enable this capability.
 
 To Do
 =====
 
+1 Report to Audrey Tang about issues with Win32::Symlink and Win32::Hardlink
+1 See if -l test can be made seamless and how far back we can go in perl versions
 1 Add some import options :STD :VLN (very long names 32767 chars) and importing 'is_l mk_VLN rm_VLN' subs on demand with rename option.
 1 Ensure is a no-op on linux systems (except is_l which will still need to be available -- alas code will still need to be refactored for this to work on both platforms).
 1 Create my PAUSE account

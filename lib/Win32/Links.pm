@@ -21,6 +21,9 @@ sub import {
         *CORE::GLOBAL::symlink  = $pkg->can('symlink');
         *CORE::GLOBAL::link     = $pkg->can('link');
         *CORE::GLOBAL::readlink = $pkg->can('readlink');
+
+        no strict 'refs';
+        *{'CORE::-X'} = $pkg->can('filetest');
         $pkg->export_to_level( 0, qw(is_l) );
 #        *is_l = *is_l_win32;
 
@@ -217,5 +220,7 @@ sub is_l {
 }
 
 sub is_l_std { return -l $_[0]; }
+
+sub filetest { return 1; }
 
 1;
