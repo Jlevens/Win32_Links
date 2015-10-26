@@ -4,39 +4,28 @@ package Win32::Links;
 
 BEGIN {
     our $VERSION    = 0.001;
+    *corestat = *CORE::stat;
 }
 my %options;
 
-our $is_l = 'IS LINK';
-our $banana = 'Mashed';
 sub import {
     use English qw( -no_match_vars ) ;
-    
-    my $pkg = shift;
 
-    print "Importing Win32::Links $pkg\n";
-    local $" = " -- ";
-    print "OPTS: @_\n";
     if( $OSNAME eq 'MSWin32' ) {
+        sub _install_Win32Links;
+        _install_Win32Links(); # Change opcode ref '-l' filetest to call our C function
+
+        my $pkg = shift;
+        print "Importing Win32::Links $pkg\n";
+        local $" = " -- ";
+        print "OPTS: @_\n";
+
         *CORE::GLOBAL::symlink  = $pkg->can('symlink');
         *CORE::GLOBAL::link     = $pkg->can('link');
         *CORE::GLOBAL::readlink = $pkg->can('readlink');
-
-        no strict 'refs';
-        *{'CORE::GLOBAL::-X'} = $pkg->can('filetest');
-        $pkg->export_to_level( 0, qw(is_l) );
-#        *is_l = *is_l_win32;
+        *CORE::GLOBAL::stat     = $pkg->can('stat');              
 
         options( 'STD' );
-        my $to_module = caller;
-        no strict 'refs';
-        *{$to_module . "::is_l"} = \&{$pkg . "::is_l"};
-#        *{$to_module . "::is_l"} = *{$pkg . "::is_l"};
-        return ( 'is_l' );
-    }
-    else {
-        $pkg->export_to_level( 1, qw(is_l) );
-#        *is_l = *is_l_std;
     }
 }
 
@@ -47,11 +36,11 @@ $code = <<'END_OF_C';
 #include <windows.h>
 
 int my_CreateSymbolicLink(char* From, char* To, int isDir) {
-    return CreateSymbolicLinkW(From, To, isDir);
+    return CreateSymbolicLinkW( (LPCWSTR) From, (LPCWSTR) To, isDir);
 }
 
 int my_CreateHardLink(char* From, char* To) {
-    return CreateHardLinkW(From, To, NULL);
+    return CreateHardLinkW( (LPCWSTR) From,  (LPCWSTR) To, NULL);
 }
 
 //# Not found in strawberry perl Windows headers
@@ -89,7 +78,7 @@ int my_ReadLink( SV* svlink, SV* target ) {
     BOOL ok;
 
     h = CreateFileW(
-            SvPV(svlink, PL_na),
+            (LPCWSTR) SvPV(svlink, PL_na),
             FILE_READ_ATTRIBUTES,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             NULL,
@@ -130,10 +119,134 @@ int my_ReadLink( SV* svlink, SV* target ) {
 
     return 0; //# Not a reparse point at all
 }
-           
+
+static OP *
+S_ft_return_false(pTHX_ SV *ret) {
+    OP *next = NORMAL;
+    dSP;
+
+    if (PL_op->op_flags & OPf_REF) XPUSHs(ret);
+    else			   SETs(ret);
+    PUTBACK;
+
+    if (PL_op->op_private & OPpFT_STACKING) {
+        while (OP_IS_FILETEST(next->op_type)
+               && next->op_private & OPpFT_STACKED)
+            next = next->op_next;
+    }
+    return next;
+}
+
+PERL_STATIC_INLINE OP *
+S_ft_return_true(pTHX_ SV *ret) {
+    dSP;
+    if (PL_op->op_flags & OPf_REF)
+        XPUSHs(PL_op->op_private & OPpFT_STACKING ? (SV *)cGVOP_gv : (ret));
+    else if (!(PL_op->op_private & OPpFT_STACKING))
+        SETs(ret);
+    PUTBACK;
+    return NORMAL;
+}
+
+#define FT_RETURNUNDEF	return S_ft_return_false(aTHX_ &PL_sv_undef)
+#define FT_RETURNNO	    return S_ft_return_false(aTHX_ &PL_sv_no)
+#define FT_RETURNYES	return S_ft_return_true(aTHX_ &PL_sv_yes)
+
+#define tryAMAGICftest_MG(chr) STMT_START { \
+	if ( (SvFLAGS(*PL_stack_sp) & (SVf_ROK|SVs_GMG)) \
+		&& PL_op->op_flags & OPf_KIDS) {     \
+	    OP *next = S_try_amagic_ftest(aTHX_ chr);	\
+	    if (next) return next;			  \
+	}						   \
+    } STMT_END
+
+STATIC OP *
+S_try_amagic_ftest(pTHX_ char chr) {
+    SV *const arg = *PL_stack_sp;
+
+    assert(chr != '?');
+    if (!(PL_op->op_private & OPpFT_STACKING)) SvGETMAGIC(arg);
+
+    if (SvAMAGIC(arg))
+    {
+	const char tmpchr = chr;
+	SV * const tmpsv = amagic_call(arg,
+				newSVpvn_flags(&tmpchr, 1, SVs_TEMP),
+				ftest_amg, AMGf_unary);
+
+	if (!tmpsv)
+	    return NULL;
+
+	return SvTRUE(tmpsv)
+            ? S_ft_return_true(aTHX_ tmpsv) : S_ft_return_false(aTHX_ tmpsv);
+    }
+    return NULL;
+}
+
+PP(pp_overload_ftlink)
+{
+    dSP;
+    I32 ok;
+    SV *const svlink = *SP;
+
+    tryAMAGICftest_MG('l');
+
+    ENTER;
+    SAVETMPS;
+    
+    PUSHMARK(SP);
+    XPUSHs( sv_2mortal( newSVsv(svlink) ) );
+    PUTBACK;
+
+    // Calling internal sub, so its our job to definitely return 1 thing not a list, i.e. we ignore return count of result items
+    call_pv ("Win32::Links::is_l", G_SCALAR);
+
+    SPAGAIN;    // Get global SP after call_pv above
+    ok = POPi;  // Get true / false of test
+
+    FREETMPS;
+    LEAVE;
+//  PUTBACK; // This was the missing trick or remove with dSP(s) below
+
+    if (ok == 1) {
+//      dSP;
+        if (PL_op->op_flags & OPf_REF)
+            XPUSHs(PL_op->op_private & OPpFT_STACKING ? (SV *)cGVOP_gv : (&PL_sv_yes));
+        else if (!(PL_op->op_private & OPpFT_STACKING))
+          SETs(&PL_sv_yes);
+        PUTBACK;
+        return PL_op->op_next;
+    }
+    else {    
+        OP *next = PL_op->op_next;
+//      dSP;
+    
+        if (PL_op->op_flags & OPf_REF)
+            XPUSHs(&PL_sv_no);
+        else
+            SETs(&PL_sv_no);
+        PUTBACK;
+    
+        if (PL_op->op_private & OPpFT_STACKING) {
+            while (OP_IS_FILETEST(next->op_type)
+                   && next->op_private & OPpFT_STACKED)
+                next = next->op_next;
+        }
+        return next;
+    }
+}
+
+OP* (*real_pp_ftlink)(pTHX);
+
+void _install_Win32Links() {
+    real_pp_ftlink = PL_ppaddr[OP_FTLINK];
+    PL_ppaddr[OP_FTLINK] = Perl_pp_overload_ftlink;
+}
+
 END_OF_C
 }
-use Inline C => $code => name => 'Win32::Links', LIBS => '-lKernel32.lib' => PREFIX => 'my_';
+use Inline C => $code => name => 'Win32::Links', LIBS => '-lKernel32.lib' => PREFIX => 'my_' =>
+    pre_head => '#include "Links.h"';
 
 use File::Spec;
 
@@ -211,6 +324,30 @@ sub readlink {
     return $opts->{old_out}->( decode("UTF16-LE", $oldfile ) );
 }
 
+# Win32 does *NOT* follow symlinks with stat
+# So lstat actually works out of the box, but stat needs fixing to follow links
+
+# Corestat uses Ansi not Wide (aka Unicode) Win API calls
+# Whereas rest of this module is using Unicode calls
+
+sub stat { 
+    my ( $newfile, $opts ) = @_;
+    $opts //= \%options;
+    $newfile = $opts->{new_in}->( $newfile );
+
+    my $oldfile;
+    
+    if( ReadLink( _to($newfile), $oldfile ) ) {
+        my @f = corestat decode("UTF16-LE", $oldfile );
+        return @f;
+    }
+    else {
+        my @f = corestat $newfile;
+        return @f;
+    }
+}
+
+# Called from C from our '-l' filetest opcode C function
 sub is_l {
     my ( $newfile, $opts ) = @_;
     $opts //= \%options;
@@ -218,9 +355,5 @@ sub is_l {
 
     return 1 & ReadLink( _to($newfile), my $oldfile );
 }
-
-sub is_l_std { return -l $_[0]; }
-
-sub filetest { return 1; }
 
 1;
