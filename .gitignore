@@ -1,6 +1,7 @@
 ﻿# 
+*.epp
 _Inline/
 # Test Symlink names
 W32*
-*.epp
 Junc
+SlideShow.txt

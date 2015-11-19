@@ -16,9 +16,9 @@ sub import {
         _install_Win32Links(); # Change opcode ref '-l' filetest to call our C function
 
         my $pkg = shift;
-        print "Importing Win32::Links $pkg\n";
-        local $" = " -- ";
-        print "OPTS: @_\n";
+#        print "Importing Win32::Links $pkg\n";
+#        local $" = " -- ";
+#        print "OPTS: @_\n";
 
         *CORE::GLOBAL::symlink  = $pkg->can('symlink');
         *CORE::GLOBAL::link     = $pkg->can('link');
@@ -206,10 +206,10 @@ PP(pp_overload_ftlink)
 
     FREETMPS;
     LEAVE;
-//  PUTBACK; // This was the missing trick or remove with dSP(s) below
+  PUTBACK; // This was the missing trick or remove with dSP(s) below
 
     if (ok == 1) {
-//      dSP;
+        dSP;
         if (PL_op->op_flags & OPf_REF)
             XPUSHs(PL_op->op_private & OPpFT_STACKING ? (SV *)cGVOP_gv : (&PL_sv_yes));
         else if (!(PL_op->op_private & OPpFT_STACKING))
@@ -219,7 +219,7 @@ PP(pp_overload_ftlink)
     }
     else {    
         OP *next = PL_op->op_next;
-//      dSP;
+        dSP;
     
         if (PL_op->op_flags & OPf_REF)
             XPUSHs(&PL_sv_no);
@@ -286,9 +286,6 @@ sub options {
             old_out => sub { return $_[0]; },
             new_in  => sub { return $_[0]; },
         );
-    }
-    elsif( reftype($opts) eq 'HASH' ) {
-        
     }
 }               
 
